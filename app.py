@@ -26,8 +26,12 @@ def create_tracker(tracker_type):
         st.error(f"Unsupported tracker type: {tracker_type}")
         return None
 
-def process_video(video_path, tracker_type, bbox):
-    video = cv2.VideoCapture(video_path)
+def process_video(video_file, tracker_type, bbox):
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp_file:
+        tmp_file.write(video_file.read())
+        temp_filename = tmp_file.name
+
+    video = cv2.VideoCapture(temp_filename)
     fps = video.get(cv2.CAP_PROP_FPS)
     width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -96,6 +100,7 @@ def process_video(video_path, tracker_type, bbox):
         time.sleep(1/fps)  # Simulate real-time playback
 
     video.release()
+    os.unlink(temp_filename)
 
 st.title('움직이는 물체 실시간 속도 측정기 :-) (ROHA_240831)')
 
@@ -105,29 +110,26 @@ if 'graph_color' not in st.session_state:
     st.session_state.graph_color = 'white'
 
 if uploaded_file is not None:
-    # Save uploaded file to a temporary file
-    tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-    tfile.write(uploaded_file.read())
-    tfile.close()
+    video_bytes = uploaded_file.read()
+    st.video(video_bytes)
+    
+    tracker_type = st.selectbox(
+        '속도 트래커를 선택해주세요. (선생님께 문의하기!)',
+        ('MIL', 'KCF', 'CSRT', 'MOSSE')
+    )
+    
+    selection_method = st.radio(
+        '추적 대상 선택 방법:',
+        ('Point', 'Box')
+    )
 
-    video = cv2.VideoCapture(tfile.name)
+    # 비디오의 첫 프레임 가져오기
+    video = cv2.VideoCapture(uploaded_file.name)
     ret, first_frame = video.read()
     video.release()
-    
+
     if ret:
-        st.video(tfile.name)
-        
         height, width = first_frame.shape[:2]
-        
-        tracker_type = st.selectbox(
-            '속도 트래커를 선택해주세요. (선생님께 문의하기!)',
-            ('MIL', 'KCF', 'CSRT', 'MOSSE')
-        )
-        
-        selection_method = st.radio(
-            '추적 대상 선택 방법:',
-            ('Point', 'Box')
-        )
         
         if selection_method == 'Point':
             col1, col2 = st.columns(2)
@@ -162,12 +164,6 @@ if uploaded_file is not None:
         
         if st.button('영상 내 속도 추적 시작하기'):
             st.write("Processing video...")
-            process_video(tfile.name, tracker_type, bbox)
-
-        # Clean up the temporary file
-        try:
-            os.unlink(tfile.name)
-        except PermissionError:
-            pass  # Ignore if file is still in use
+            process_video(uploaded_file, tracker_type, bbox)
     else:
         st.error("Failed to read the first frame of the video.")
